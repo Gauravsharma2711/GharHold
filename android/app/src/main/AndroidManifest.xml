@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:label="gharhold"
-        android:name="${applicationName}"
+        android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
@@ -30,6 +30,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <meta-data
+            android:name="sh.measure.android.API_KEY"
+            android:value="msrsh_267d3bf513c85593e409745cbd74c52a8d2f27a2ac03fe3139a52f3c33cca821_112aab9f" />
+        <meta-data
+            android:name="sh.measure.android.API_URL"
+            android:value="https://ingest.measure.sh" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

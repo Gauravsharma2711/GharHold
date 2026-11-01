@@ -71,6 +71,12 @@ void main() async {
   );
 
   runApp(observabilityService.wrapRootWidget(appWidget));
+
+  // The 2-second delay gives the SDK time to flush the crash event.
+  // Remove this code after the crash appears in your dashboard.
+  Future.delayed(const Duration(seconds: 2), () {
+    throw Exception('Test crash from Measure onboarding');
+  });
 }
 
 class GharHoldApp extends StatelessWidget {
