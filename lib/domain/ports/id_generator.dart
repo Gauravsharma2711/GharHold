@@ -32,4 +32,3 @@ class StandardIdGenerator implements IdGenerator {
     return 'idem-$timestamp-$count';
   }
 }
-

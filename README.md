@@ -6,7 +6,7 @@
 [![Flutter](https://img.shields.io/badge/Flutter-3.44.7-02569B?logo=flutter)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.12.2-0175C2?logo=dart)](https://dart.dev)
 [![Drift](https://img.shields.io/badge/Database-Drift%202.35%20over%20SQLite-blue)](https://drift.simonbinder.eu/)
-[![Tests](https://img.shields.io/badge/Tests-50%20passing%20green-success)](file:///docs/test-evidence.md)
+[![Tests](https://img.shields.io/badge/Tests-54%20passing%20green-success)](file:///docs/test-evidence.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -34,8 +34,9 @@ During commutes through the Mumbai Suburban Railway and metro corridors, intermi
 | **Architecture** | Clean Architecture / Ports & Adapters | 4 Modules: `domain`, `data`, `observability`, `ui` |
 | **Domain Layer** | Pure Dart | 0 framework/database imports (`domain_purity_test.dart`) |
 | **UI Design System** | Custom Forest & Lime Tokens | Forest Ink (`#0D2818`), Lime Voltage (`#D4E725`), Inter typography |
+| **Observability** | Measure.sh & DiagnosticSink | `measure_flutter: ^0.9.1`, Crash reporting, ANRs, Spans & Privacy Masking |
 | **Remote Simulation** | `SimulatedRemoteService` | Controllable in-memory fault injection (Drop Network & Stale Conflict) |
-| **CI / Automation** | GitHub Actions | Lint, static analysis, 50 tests, Android APK build & artifact upload |
+| **CI / Automation** | GitHub Actions | Lint, static analysis, 54 tests, Android APK build & artifact upload |
 
 ---
 
@@ -296,11 +297,27 @@ flutter test
 - **`test/data/simulated_remote_service_test.dart`**: Tests normal sync, network drop, and one-shot stale conflict.
 - **`test/data/proptech_repository_test.dart`**: Tests transactional outbox coordination, safe retry, owner decisions, token locks, and seed reset.
 - **`test/data/recovery_test.dart`**: File-backed restart test verifying interrupted `PENDING_SYNC` recovery and privacy sanitization.
+- **`test/observability/observability_test.dart`**: Tests Measure.sh integration, PII attribute scrubbing, trace spans, and verified zero impact on business states.
 - **`test/widget_test.dart`**: UI acceptance tests across GH01–GH07 with zero onboarding or auth screens.
 
 ---
 
-## 13. Five-Minute Judging Demo Walkthrough
+## 13. Mobile Observability with Measure.sh
+
+GharHold integrates **Measure.sh** via `measure_flutter` for client-side mobile monitoring:
+
+### Architecture & Responsibility Separation
+- **GharHold Internal Audit (`DiagnosticSink`)**: Owns transactional business state transitions, domain rule rejections, fault settings, and local database recovery evidence rendered in GH06.
+- **Measure.sh (`ObservabilityService`)**: Owns technical runtime health, Flutter crash reporting, Android ANR monitoring, performance tracing, screen views, and user feedback.
+
+### Privacy & Sensitive Data Protection
+- **Attribute Sanitization**: Automatically intercepts and strips keys containing `phone`, `email`, `address`, `location`, `note`, or credentials.
+- **Widget Masking (`MsrMask`)**: Redacts user viewing notes (GH03) and owner reopen explanation inputs (GH05) from screenshots and layout captures.
+- **Environment & No-Op Modes**: Telemetry can be toggled using `--dart-define=ENABLE_MEASURE=false` or substituted with `NoOpObservabilityService` during tests without requiring network or Measure accounts.
+
+---
+
+## 14. Five-Minute Judging Demo Walkthrough
 
 1. **0:00–0:45 — Frame the Problem**:
    - Point out the persistent Architecture Inspection Bar with its **SIMULATION** badge.

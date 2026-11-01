@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:measure_flutter/measure_flutter.dart';
 import '../../data/preview_state.dart';
 import '../../domain/models/request.dart';
 import '../../domain/rules/rules.dart';
@@ -56,13 +57,15 @@ class _GH05OwnerInboxScreenState extends State<GH05OwnerInboxScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      hintText:
-                          'e.g. Schedule conflict resolved, flat is available.',
-                      errorText: localError,
+                  MsrMask(
+                    child: TextField(
+                      controller: controller,
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        hintText:
+                            'e.g. Schedule conflict resolved, flat is available.',
+                        errorText: localError,
+                      ),
                     ),
                   ),
                 ],

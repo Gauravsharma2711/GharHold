@@ -15,6 +15,8 @@ import '../domain/models/request.dart';
 import '../domain/ports/proptech_repository.dart';
 import '../domain/rules/rules.dart';
 import '../observability/diagnostic_sink.dart';
+import '../observability/noop_observability_service.dart';
+import '../observability/observability_service.dart';
 import 'fixtures/seed_listings.dart';
 import 'remote/fault_config.dart';
 
@@ -24,6 +26,7 @@ class GharHoldPreviewState extends ChangeNotifier {
   final ProptechRepository? repository;
   final FaultConfig? faultConfig;
   final DiagnosticSink _diagnosticSink;
+  final ObservabilityService observability;
   final Uuid _uuid = const Uuid();
 
   StreamSubscription<List<PropertyListing>>? _listingsSub;
@@ -41,7 +44,9 @@ class GharHoldPreviewState extends ChangeNotifier {
     this.repository,
     this.faultConfig,
     DiagnosticSink? diagnosticSink,
-  }) : _diagnosticSink = diagnosticSink ?? InMemDiagnosticSink() {
+    ObservabilityService? observability,
+  }) : _diagnosticSink = diagnosticSink ?? InMemDiagnosticSink(),
+       observability = observability ?? NoOpObservabilityService() {
     if (repository == null) {
       _initFixtures();
     } else {
@@ -202,6 +207,11 @@ class GharHoldPreviewState extends ChangeNotifier {
       }
     }
 
+    observability.trackCustomEvent(
+      'fault_mode_changed',
+      attributes: {'fault_mode': mode.name},
+    );
+
     _diagnosticSink.log(
       AuditEvent(
         timestamp: DateTime.now(),
@@ -229,6 +239,9 @@ class GharHoldPreviewState extends ChangeNotifier {
     required String note,
     String renterId = 'r1',
   }) {
+    final span = observability.startSpan('viewing_request_transaction');
+    span.setAttribute('operation', 'submit_viewing_request');
+
     if (repository != null) {
       repository!.submitViewingRequest(
         listingId: listingId,
@@ -241,7 +254,7 @@ class GharHoldPreviewState extends ChangeNotifier {
       final hasActive = _requests.any(
         (r) => r.listingId == listingId && r.isActive,
       );
-      return ProptechBusinessRules.validateNewViewingRequest(
+      final result = ProptechBusinessRules.validateNewViewingRequest(
         listing:
             listing ??
             const PropertyListing(
@@ -259,11 +272,33 @@ class GharHoldPreviewState extends ChangeNotifier {
         note: note,
         actorRole: _currentRole,
       );
+
+      if (result is Valid) {
+        observability.trackCustomEvent(
+          'viewing_request_submitted',
+          attributes: {'role': _currentRole.name, 'result': 'valid'},
+        );
+        span.setStatusOk();
+      } else if (result is Rejected) {
+        observability.trackCustomEvent(
+          'viewing_request_failed',
+          attributes: {'rule_code': result.ruleCode, 'role': _currentRole.name},
+        );
+        span.setStatusError(result.ruleCode);
+      }
+      span.end();
+      return result;
     }
 
     // In-memory fallback
     final listingIndex = _listings.indexWhere((l) => l.id == listingId);
     if (listingIndex == -1) {
+      observability.trackCustomEvent(
+        'viewing_request_failed',
+        attributes: {'rule_code': ProptechBusinessRules.errListingNotAvailable},
+      );
+      span.setStatusError('listing_not_found');
+      span.end();
       return const Rejected(
         ruleCode: ProptechBusinessRules.errListingNotAvailable,
         userMessage: 'Listing not found.',
@@ -286,6 +321,15 @@ class GharHoldPreviewState extends ChangeNotifier {
     final correlationId = _uuid.v4();
 
     if (validation is Rejected) {
+      observability.trackCustomEvent(
+        'viewing_request_failed',
+        attributes: {
+          'rule_code': validation.ruleCode,
+          'role': _currentRole.name,
+        },
+      );
+      span.setStatusError(validation.ruleCode);
+      span.end();
       _diagnosticSink.log(
         AuditEvent(
           timestamp: now,
@@ -330,6 +374,13 @@ class GharHoldPreviewState extends ChangeNotifier {
       );
       _requests.insert(0, abortedRequest);
 
+      observability.trackCustomEvent(
+        'stale_conflict_detected',
+        attributes: {'listing_version': listing.version, 'result': 'aborted'},
+      );
+      span.setStatusError('stale_conflict');
+      span.end();
+
       _diagnosticSink.log(
         AuditEvent(
           timestamp: now,
@@ -368,6 +419,13 @@ class GharHoldPreviewState extends ChangeNotifier {
         updatedAt: now,
       );
       _requests.insert(0, failedRequest);
+
+      observability.trackCustomEvent(
+        'sync_failed',
+        attributes: {'reason': 'network_dropped', 'retryable': true},
+      );
+      span.setStatusError('network_dropped');
+      span.end();
 
       _diagnosticSink.log(
         AuditEvent(
@@ -421,6 +479,13 @@ class GharHoldPreviewState extends ChangeNotifier {
     );
     _requests.insert(0, request);
 
+    observability.trackCustomEvent(
+      'viewing_request_submitted',
+      attributes: {'status': 'submitted', 'role': _currentRole.name},
+    );
+    span.setStatusOk();
+    span.end();
+
     _diagnosticSink.log(
       AuditEvent(
         timestamp: now,
@@ -439,19 +504,39 @@ class GharHoldPreviewState extends ChangeNotifier {
   }
 
   void retryRequest(String requestId) {
+    final span = observability.startSpan('retry_operation');
+    span.setAttribute('operation', 'retry_sync');
+
     if (repository != null) {
       repository!.retrySync(requestId);
+      observability.trackCustomEvent(
+        'sync_retry_attempted',
+        attributes: {'operation': 'retry_sync'},
+      );
+      span.setStatusOk();
+      span.end();
       return;
     }
 
     final idx = _requests.indexWhere((r) => r.id == requestId);
-    if (idx == -1) return;
+    if (idx == -1) {
+      span.setStatusError('request_not_found');
+      span.end();
+      return;
+    }
 
     final req = _requests[idx];
     final now = DateTime.now();
     final correlationId = _uuid.v4();
 
     if (_faultMode == PreviewFaultMode.DROP_NETWORK) {
+      observability.trackCustomEvent(
+        'sync_failed',
+        attributes: {'reason': 'network_dropped_on_retry'},
+      );
+      span.setStatusError('network_dropped');
+      span.end();
+
       _diagnosticSink.log(
         AuditEvent(
           timestamp: now,
@@ -474,6 +559,13 @@ class GharHoldPreviewState extends ChangeNotifier {
       updatedAt: now,
     );
     _requests[idx] = updated;
+
+    observability.trackCustomEvent(
+      'sync_retry_attempted',
+      attributes: {'status': 'submitted'},
+    );
+    span.setStatusOk();
+    span.end();
 
     _diagnosticSink.log(
       AuditEvent(
@@ -606,47 +698,90 @@ class GharHoldPreviewState extends ChangeNotifier {
   }
 
   ValidationResult ownerApprove(String requestId) {
+    final span = observability.startSpan('owner_decision_transaction');
+    span.setAttribute('operation', 'approve');
+
     if (repository != null) {
       repository!.approveRequest(requestId, 'o1', actorRole: _currentRole);
       final req = getRequestById(requestId);
       if (req == null) {
+        span.setStatusError('request_not_found');
+        span.end();
         return const Rejected(
           ruleCode: ProptechBusinessRules.errIllegalTransition,
           userMessage: 'Request not found.',
         );
       }
-      return ProptechBusinessRules.validateOwnerAction(
+      final result = ProptechBusinessRules.validateOwnerAction(
         actorRole: _currentRole,
         request: req,
         targetStatus: RequestStatus.APPROVED,
       );
+      if (result is Valid) {
+        observability.trackCustomEvent(
+          'owner_request_approved',
+          attributes: {'status': 'approved'},
+        );
+        span.setStatusOk();
+      } else if (result is Rejected) {
+        span.setStatusError(result.ruleCode);
+      }
+      span.end();
+      return result;
     }
 
-    return _applyOwnerDecision(
+    final res = _applyOwnerDecision(
       requestId: requestId,
       targetStatus: RequestStatus.APPROVED,
       summaryText: 'Owner approved viewing request',
     );
+    if (res is Valid) {
+      observability.trackCustomEvent(
+        'owner_request_approved',
+        attributes: {'status': 'approved'},
+      );
+      span.setStatusOk();
+    } else if (res is Rejected) {
+      span.setStatusError(res.ruleCode);
+    }
+    span.end();
+    return res;
   }
 
   ValidationResult ownerDecline(String requestId) {
+    final span = observability.startSpan('owner_decision_transaction');
+    span.setAttribute('operation', 'decline');
+
     if (repository != null) {
       repository!.declineRequest(requestId, 'o1', actorRole: _currentRole);
       final req = getRequestById(requestId);
       if (req == null) {
+        span.setStatusError('request_not_found');
+        span.end();
         return const Rejected(
           ruleCode: ProptechBusinessRules.errIllegalTransition,
           userMessage: 'Request not found.',
         );
       }
-      return ProptechBusinessRules.validateOwnerAction(
+      final result = ProptechBusinessRules.validateOwnerAction(
         actorRole: _currentRole,
         request: req,
         targetStatus: RequestStatus.DECLINED,
       );
+      if (result is Valid) {
+        observability.trackCustomEvent(
+          'owner_request_declined',
+          attributes: {'status': 'declined'},
+        );
+        span.setStatusOk();
+      } else if (result is Rejected) {
+        span.setStatusError(result.ruleCode);
+      }
+      span.end();
+      return result;
     }
 
-    return _applyOwnerDecision(
+    final res = _applyOwnerDecision(
       requestId: requestId,
       targetStatus: RequestStatus.DECLINED,
       summaryText:
@@ -659,6 +794,17 @@ class GharHoldPreviewState extends ChangeNotifier {
         }
       },
     );
+    if (res is Valid) {
+      observability.trackCustomEvent(
+        'owner_request_declined',
+        attributes: {'status': 'declined'},
+      );
+      span.setStatusOk();
+    } else if (res is Rejected) {
+      span.setStatusError(res.ruleCode);
+    }
+    span.end();
+    return res;
   }
 
   ValidationResult ownerReopen(String requestId, String reason) {
@@ -949,6 +1095,11 @@ class GharHoldPreviewState extends ChangeNotifier {
   }
 
   void resetPreviewData() {
+    observability.trackCustomEvent(
+      'demo_data_reset',
+      attributes: {'operation': 'reset_fixtures'},
+    );
+
     if (repository != null) {
       repository!.resetToSeed();
       if (faultConfig != null) {

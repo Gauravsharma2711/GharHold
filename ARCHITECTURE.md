@@ -33,7 +33,8 @@ flowchart TD
     end
 
     subgraph OBSERVABILITY ["observability Module"]
-        Logger["DiagnosticSink & Audit Trail\n(Sanitized structured events: no PII/notes)"]
+        Logger["DiagnosticSink & Audit Trail\n(Sanitized SQLite events: no PII/notes)"]
+        Measure["ObservabilityService / Measure.sh\n(Crash reporting, ANR, performance spans,\nscreen views, privacy masking via MsrMask)"]
     end
 
     %% Interactions & Flow
@@ -79,6 +80,8 @@ $$\text{UI ACTION} \longrightarrow \text{DOMAIN RULES} \longrightarrow \text{LOC
 
 - **`domain`**: 100% pure Dart. Strictly prohibited from importing `package:flutter`, `package:drift`, `sqlite`, or platform/network packages. Verified by `test/domain/domain_purity_test.dart`.
 - **`data`**: Implements persistence and remote service adapters behind domain interfaces (`ProptechRepository`, `RemoteService`).
-- **`observability`**: Implements structured diagnostics and audit sinks without exposing PII.
-- **`ui`**: Flutter UI comprising screens GH01–GH07, theme tokens, and the persistent Architecture Inspection Bar. UI consumes Drift-backed reactive streams without executing business logic directly.
+- **`observability`**: Implements structured diagnostics and audit sinks without exposing PII. Contains two isolated sub-systems:
+  1. Internal `DiagnosticSink` for durable SQLite audit trails.
+  2. Mobile telemetry via `ObservabilityService` (`MeasureObservabilityService` / `NoOpObservabilityService`) wrapping `measure_flutter` for crash reporting, ANR monitoring, safe navigation tracking, and performance spans with zero-PII transmission.
+- **`ui`**: Flutter UI comprising screens GH01–GH07, theme tokens, and the persistent Architecture Inspection Bar. UI consumes Drift-backed reactive streams without executing business logic directly. Sensitive input fields are wrapped in `MsrMask` to prevent screenshot leakage.
 

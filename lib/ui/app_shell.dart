@@ -32,6 +32,7 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
   void initState() {
     super.initState();
     widget.state.addListener(_onStateChanged);
+    widget.state.observability.trackScreenView('gh01_listing_feed');
   }
 
   @override
@@ -59,6 +60,7 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
   }
 
   void _openRequestViewingSheet(PropertyListing listing) {
+    widget.state.observability.trackScreenView('gh03_request_viewing');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -146,6 +148,7 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
                 _selectedListing = null;
                 _selectedNavIndex = 3;
               });
+              widget.state.observability.trackScreenView('gh07_settings_reset');
             },
           ),
         ],
@@ -158,6 +161,9 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
           ArchitectureInspectionBar(
             state: widget.state,
             onOpenEvidence: () {
+              widget.state.observability.trackScreenView(
+                'gh06_evidence_drawer',
+              );
               _scaffoldKey.currentState?.openEndDrawer();
             },
           ),
@@ -176,6 +182,15 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
               widget.state.setRole(Role.RENTER);
             }
           });
+
+          final screenName = switch (index) {
+            0 => 'gh01_listing_feed',
+            1 => 'gh04_my_requests',
+            2 => 'gh05_owner_inbox',
+            3 => 'gh07_settings_reset',
+            _ => 'screen_$index',
+          };
+          widget.state.observability.trackScreenView(screenName);
         },
         items: const [
           BottomNavigationBarItem(
@@ -215,6 +230,13 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
                 state: widget.state,
                 onSelectListing: (listing) {
                   setState(() => _selectedListing = listing);
+                  widget.state.observability.trackScreenView(
+                    'gh02_listing_detail',
+                  );
+                  widget.state.observability.trackCustomEvent(
+                    'listing_detail_opened',
+                    attributes: {'listing_state': listing.state.name},
+                  );
                 },
               ),
             ),
@@ -245,6 +267,11 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
           state: widget.state,
           onSelectListing: (listing) {
             setState(() => _selectedListing = listing);
+            widget.state.observability.trackScreenView('gh02_listing_detail');
+            widget.state.observability.trackCustomEvent(
+              'listing_detail_opened',
+              attributes: {'listing_state': listing.state.name},
+            );
           },
         );
       case 1:
@@ -265,6 +292,11 @@ class _GharHoldAppShellState extends State<GharHoldAppShell> {
           state: widget.state,
           onSelectListing: (listing) {
             setState(() => _selectedListing = listing);
+            widget.state.observability.trackScreenView('gh02_listing_detail');
+            widget.state.observability.trackCustomEvent(
+              'listing_detail_opened',
+              attributes: {'listing_state': listing.state.name},
+            );
           },
         );
     }

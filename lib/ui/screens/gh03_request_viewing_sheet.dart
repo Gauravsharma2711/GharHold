@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:measure_flutter/measure_flutter.dart';
 import '../../data/preview_state.dart';
 import '../../domain/models/listing.dart';
 import '../../domain/rules/rules.dart';
@@ -224,15 +225,17 @@ class _GH03RequestViewingSheetState extends State<GH03RequestViewingSheet> {
                 ],
               ),
               const SizedBox(height: 8),
-              TextFormField(
-                controller: _noteController,
-                maxLines: 3,
-                maxLength: 200,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText:
-                      'e.g. Relocating from Pune, looking for 11-month lease.',
-                  counterText: '',
+              MsrMask(
+                child: TextFormField(
+                  controller: _noteController,
+                  maxLines: 3,
+                  maxLength: 200,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    hintText:
+                        'e.g. Relocating from Pune, looking for 11-month lease.',
+                    counterText: '',
+                  ),
                 ),
               ),
               if (_errorMessage != null) ...[
